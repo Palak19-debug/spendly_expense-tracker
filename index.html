@@ -1,0 +1,669 @@
+
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Spendly — Expense Tracker</title>
+<style>
+:root{color-scheme:light dark;--bg:light-dark(#f5f7fb,#10131a);--panel:light-dark(#fff,#191e28);--panel2:light-dark(#f8fafc,#202735);--text:light-dark(#172033,#f1f5f9);--muted:light-dark(#667085,#a2adbf);--border:light-dark(#e5eaf1,#303949);--accent:light-dark(#6257e8,#9b93ff);--accent2:light-dark(#eeeaff,#302d54);--green:light-dark(#16845b,#6de0ad);--red:light-dark(#c23a4b,#ff8490);--shadow:0 10px 30px #1018280c}
+*{box-sizing:border-box}
+body{margin:0;background:var(--bg);color:var(--text);font:15px/1.45 Inter,ui-sans-serif,system-ui,-apple-system,BlinkMacSystemFont,"Segoe UI",sans-serif}
+.app{min-height:100vh;background:var(--bg)}
+.layout{display:grid;grid-template-columns:230px minmax(0,1fr);min-height:100vh}
+.sidebar{background:var(--panel);border-right:1px solid var(--border);padding:27px 17px;display:flex;flex-direction:column;gap:30px}
+.brand{display:flex;align-items:center;gap:10px;font-size:22px;font-weight:800;letter-spacing:-.7px;padding:0 10px}
+.logo{width:36px;height:36px;border-radius:12px;background:var(--accent);color:white;display:grid;place-items:center;font-weight:900}
+.nav{display:grid;gap:7px}
+.nav button{border:0;background:transparent;color:var(--muted);text-align:left;padding:12px 13px;border-radius:11px;font:inherit;cursor:pointer;display:flex;gap:12px;align-items:center}
+.nav button.active,.nav button:hover{background:var(--accent2);color:var(--accent);font-weight:700}
+.side-note{margin-top:auto;padding:15px;border:1px solid var(--border);border-radius:14px;color:var(--muted);font-size:12px}
+.side-note strong{display:block;color:var(--text);font-size:13px;margin-bottom:5px}
+.main{padding:30px clamp(18px,4vw,48px);max-width:1500px;width:100%;margin:0 auto}
+.topbar{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-bottom:28px}
+.eyebrow{color:var(--muted);font-size:12px;font-weight:700;letter-spacing:1.4px;text-transform:uppercase}
+.topbar h1{margin:4px 0 0;font-size:clamp(26px,3vw,34px);letter-spacing:-1.1px}
+.top-actions{display:flex;align-items:center;gap:10px}
+.date-chip,.avatar{border:1px solid var(--border);background:var(--panel);border-radius:12px;padding:10px 12px;color:var(--muted);font-size:13px}
+.avatar{background:var(--accent2);color:var(--accent);font-weight:800}
+.btn{border:0;border-radius:11px;background:var(--accent);color:#fff;padding:11px 15px;font:inherit;font-weight:700;cursor:pointer;box-shadow:0 4px 10px #6257e822}
+.btn:hover{filter:brightness(1.06)}
+.btn.secondary{background:var(--panel);color:var(--text);border:1px solid var(--border);box-shadow:none}
+.stats{display:grid;grid-template-columns:repeat(4,minmax(0,1fr));gap:16px;margin-bottom:22px}
+.stat{background:var(--panel);border:1px solid var(--border);border-radius:17px;padding:19px;box-shadow:var(--shadow)}
+.stat-top{display:flex;align-items:center;justify-content:space-between;color:var(--muted);font-size:13px;gap:8px}
+.stat-icon{width:34px;height:34px;border-radius:11px;background:var(--accent2);display:grid;place-items:center;color:var(--accent);font-size:17px}
+.stat-value{font-size:clamp(21px,2vw,29px);font-weight:800;letter-spacing:-.8px;margin:14px 0 4px}
+.stat-foot{color:var(--muted);font-size:12px}
+.positive{color:var(--green)}
+.content-grid{display:grid;grid-template-columns:minmax(0,1.6fr) minmax(260px,.9fr);gap:18px;margin-bottom:20px}
+.panel{background:var(--panel);border:1px solid var(--border);border-radius:17px;padding:21px;box-shadow:var(--shadow);min-width:0}
+.panel-head{display:flex;justify-content:space-between;align-items:center;gap:12px;margin-bottom:20px}
+.panel-head h2{font-size:16px;margin:0;letter-spacing:-.3px}
+.subtle{font-size:12px;color:var(--muted)}
+.bars{height:175px;display:flex;align-items:end;gap:clamp(8px,2vw,22px);padding:10px 4px 0;border-bottom:1px solid var(--border)}
+.bar-col{height:100%;flex:1;display:flex;flex-direction:column;justify-content:end;align-items:center;gap:9px;min-width:0}
+.bar{width:min(34px,80%);min-height:5px;border-radius:8px 8px 3px 3px;background:var(--accent);opacity:.83;position:relative}
+.bar.current{opacity:1;background:linear-gradient(180deg,#9188ff,var(--accent))}
+.bar-label{font-size:11px;color:var(--muted)}
+.legend{display:flex;gap:16px;margin-top:16px;color:var(--muted);font-size:12px}
+.dot{display:inline-block;width:8px;height:8px;border-radius:50%;background:var(--accent);margin-right:6px}
+.category-list{display:grid;gap:17px}
+.category-row{display:grid;grid-template-columns:34px minmax(0,1fr) auto;align-items:center;gap:10px}
+.cat-icon{height:34px;width:34px;border-radius:11px;background:var(--panel2);display:grid;place-items:center}
+.cat-name{font-size:13px;font-weight:700}
+.cat-track{height:5px;background:var(--panel2);border-radius:10px;margin-top:7px;overflow:hidden}
+.cat-fill{height:100%;background:var(--accent);border-radius:10px}
+.cat-amount{font-size:12px;font-weight:700}
+.transactions{margin-top:20px}
+.table-wrap{overflow-x:auto}
+table{width:100%;border-collapse:collapse;white-space:nowrap}
+th{text-align:left;font-size:11px;letter-spacing:.7px;text-transform:uppercase;color:var(--muted);font-weight:700;padding:12px 9px;border-bottom:1px solid var(--border)}
+td{padding:14px 9px;border-bottom:1px solid var(--border);font-size:13px}
+tr:last-child td{border-bottom:0}
+.expense-name{font-weight:700}
+.expense-desc{color:var(--muted);font-size:11px;margin-top:3px}
+.pill{display:inline-flex;padding:5px 9px;border-radius:8px;background:var(--panel2);font-size:11px;color:var(--muted)}
+.amount{font-weight:800;text-align:right}
+.row-actions{display:flex;gap:6px}
+.icon-btn{border:1px solid var(--border);background:var(--panel);color:var(--muted);border-radius:8px;padding:6px 8px;cursor:pointer}
+.icon-btn:hover{color:var(--accent);border-color:var(--accent)}
+.empty{text-align:center;padding:35px 12px;color:var(--muted)}
+.footer-note{color:var(--muted);font-size:11px;text-align:center;padding:18px}
+.hidden{display:none!important}
+.modal-backdrop{position:fixed;inset:0;background:#0a1020a8;display:grid;place-items:center;padding:18px;z-index:5}
+.modal{width:min(520px,100%);max-height:90vh;overflow:auto;background:var(--panel);border:1px solid var(--border);border-radius:18px;padding:24px;box-shadow:0 25px 80px #0004}
+.modal-head{display:flex;justify-content:space-between;align-items:center;margin-bottom:20px}
+.modal-head h2{margin:0;font-size:20px}
+.close{border:0;background:transparent;color:var(--muted);font-size:24px;cursor:pointer}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+.field{display:grid;gap:7px}
+.field.full{grid-column:1/-1}
+.field label{font-size:12px;color:var(--muted);font-weight:700}
+.field input,.field select,.field textarea{width:100%;background:var(--bg);color:var(--text);border:1px solid var(--border);border-radius:10px;padding:11px 12px;font:inherit;outline:none}
+.field input:focus,.field select:focus,.field textarea:focus{border-color:var(--accent)}
+.form-actions{display:flex;justify-content:flex-end;gap:9px;margin-top:20px}
+.toast{position:fixed;right:20px;bottom:20px;background:var(--text);color:var(--panel);padding:12px 16px;border-radius:12px;box-shadow:var(--shadow);z-index:9;font-size:13px}
+.page-panel{min-height:250px}
+.settings-list{display:grid;gap:12px}
+.settings-row{padding:15px;border:1px solid var(--border);border-radius:12px;display:flex;justify-content:space-between;gap:20px}
+.settings-row small{display:block;color:var(--muted);margin-top:4px}
+.settings-row strong{font-size:13px}
+.badge-demo{font-size:11px;color:var(--green);font-weight:700}
+@media(max-width:1000px){.stats{grid-template-columns:repeat(2,minmax(0,1fr))}.content-grid{grid-template-columns:1fr}}
+@media(max-width:680px){.layout{grid-template-columns:1fr}.sidebar{padding:14px 16px;border-right:0;border-bottom:1px solid var(--border);gap:14px}.brand{padding:0 3px}.nav{display:flex;overflow-x:auto}.nav button{white-space:nowrap;padding:9px 11px}.side-note{display:none}.main{padding:22px 14px}.topbar{align-items:flex-start}.top-actions .date-chip{display:none}.stats{gap:10px}.stat{padding:14px}.stat-value{font-size:22px}.panel{padding:16px}.form-grid{grid-template-columns:1fr}.field.full{grid-column:auto}.topbar .btn{padding:10px 11px;font-size:13px}}
+</style>
+</head>
+
+<body>
+<div class="app">
+<div class="layout">
+<aside class="sidebar">
+<div class="brand"><div class="logo">S</div><span>spendly</span></div>
+<nav class="nav" aria-label="Main navigation">
+<button class="active" data-page="dashboard"><span>▦</span> Dashboard</button>
+<button data-page="transactions"><span>↔</span> Transactions</button>
+<button data-page="receipts"><span>▤</span> Receipts</button>
+<button data-page="settings"><span>⚙</span> Settings</button>
+</nav>
+<div class="side-note"><strong>☁ Cloud-ready concept</strong>This interactive demo saves data in this browser. AWS integration is the next build step.</div>
+</aside>
+<main class="main">
+<header class="topbar">
+<div>
+<div class="eyebrow" id="eyebrow">Your money, in focus</div>
+<h1 id="pageTitle">Good morning 👋</h1>
+</div>
+<div class="top-actions">
+<div class="date-chip" id="todayChip"></div>
+<div class="avatar">U</div>
+<button class="btn" id="addBtn">＋ Add expense</button>
+</div>
+</header>
+
+<section id="dashboardPage">
+<div class="stats">
+<div class="stat">
+<div class="stat-top"><span>Total expenses</span><span class="stat-icon">↗</span></div>
+<div class="stat-value" id="totalValue">₹0</div>
+<div class="stat-foot">All recorded transactions</div>
+</div>
+<div class="stat">
+<div class="stat-top"><span>This month</span><span class="stat-icon">▦</span></div>
+<div class="stat-value" id="monthValue">₹0</div>
+<div class="stat-foot" id="monthFoot">Monthly spending</div>
+</div>
+<div class="stat">
+<div class="stat-top"><span>Transactions</span><span class="stat-icon">⇄</span></div>
+<div class="stat-value" id="countValue">0</div>
+<div class="stat-foot">Expenses tracked</div>
+</div>
+<div class="stat">
+<div class="stat-top"><span>Top category</span><span class="stat-icon">✦</span></div>
+<div class="stat-value" id="topValue">—</div>
+<div class="stat-foot">By total amount</div>
+</div>
+</div>
+
+<div class="content-grid">
+<section class="panel">
+<div class="panel-head">
+<div><h2>Spending overview</h2><div class="subtle">Monthly expense activity</div></div>
+<span class="pill">Last 6 months</span>
+</div>
+<div class="bars" id="bars"></div>
+<div class="legend"><span><i class="dot"></i>Monthly spend</span><span class="subtle">Based on saved expenses</span></div>
+</section>
+<section class="panel">
+<div class="panel-head">
+<div><h2>Spending by category</h2><div class="subtle">Where your money goes</div></div>
+</div>
+<div class="category-list" id="categories"></div>
+</section>
+</div>
+
+<section class="panel transactions">
+<div class="panel-head">
+<div><h2>Recent transactions</h2><div class="subtle">Your latest expense records</div></div>
+<button class="btn secondary" id="viewAllBtn">View all →</button>
+</div>
+<div id="recentTable"></div>
+</section>
+</section>
+
+<section id="transactionsPage" class="panel page-panel hidden">
+<div class="panel-head">
+<div><h2>All transactions</h2><div class="subtle">Create, edit, or remove expense records</div></div>
+<button class="btn" id="addBtn2">＋ Add expense</button>
+</div>
+<div id="allTable"></div>
+</section>
+
+<section id="receiptsPage" class="panel page-panel hidden">
+<div class="panel-head">
+<div><h2>Receipt library</h2><div class="subtle">Receipts attached to your expense records</div></div>
+</div>
+<div id="receiptList"></div>
+<p class="subtle">Demo note: files stay in this browser for this prototype. In the AWS version, receipt files will be uploaded to Amazon S3.</p>
+</section>
+
+<section id="settingsPage" class="panel page-panel hidden">
+<div class="panel-head">
+<div><h2>Project settings</h2><div class="subtle">Prototype and cloud architecture status</div></div>
+</div>
+<div class="settings-list">
+<div class="settings-row"><div><strong>Storage mode</strong><small>Local browser storage for this prototype</small></div><span class="pill">Demo</span></div>
+<div class="settings-row"><div><strong>Backend</strong><small>AWS Lambda + API Gateway (next implementation step)</small></div><span class="pill">Planned</span></div>
+<div class="settings-row"><div><strong>Expense database</strong><small>Amazon DynamoDB</small></div><span class="pill">Planned</span></div>
+<div class="settings-row"><div><strong>Receipt storage</strong><small>Amazon S3 with least-privilege IAM access</small></div><span class="pill">Planned</span></div>
+<div class="settings-row"><div><strong>Data in this browser</strong><small>You can clear the sample and locally saved data.</small></div><button class="btn secondary" id="resetBtn">Reset demo data</button></div>
+</div>
+</section>
+
+<div class="footer-note">Spendly · Cloud Computing Mini Project · Interactive frontend prototype</div>
+</main>
+</div>
+</div>
+
+<div class="modal-backdrop hidden" id="modalBackdrop">
+<div class="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+<div class="modal-head">
+<h2 id="modalTitle">Add expense</h2>
+<button class="close" id="closeModal" aria-label="Close">×</button>
+</div>
+<form id="expenseForm">
+<div class="form-grid">
+<div class="field">
+<label for="amount">Amount (₹) *</label>
+<input id="amount" type="number" min="0.01" step="0.01" required placeholder="e.g. 450">
+</div>
+<div class="field">
+<label for="category">Category *</label>
+<select id="category" required>
+<option>Food</option><option>Transport</option><option>Shopping</option><option>Bills</option><option>Health</option><option>Entertainment</option><option>Education</option><option>Other</option>
+</select>
+</div>
+<div class="field">
+<label for="date">Date *</label>
+<input id="date" type="date" required>
+</div>
+<div class="field">
+<label for="merchant">Merchant / title *</label>
+<input id="merchant" maxlength="70" required placeholder="e.g. Grocery store">
+</div>
+<div class="field full">
+<label for="description">Description</label>
+<textarea id="description" rows="2" maxlength="200" placeholder="What was this expense for?"></textarea>
+</div>
+<div class="field full">
+<label for="receipt">Receipt file (optional)</label>
+<input id="receipt" type="file" accept="image/*,.pdf">
+<span class="subtle">Local demo only. Don't upload sensitive documents.</span>
+</div>
+</div>
+<div class="form-actions">
+<button type="button" class="btn secondary" id="cancelBtn">Cancel</button>
+<button class="btn" type="submit">Save expense</button>
+</div>
+</form>
+</div>
+</div>
+
+<div id="toast" class="toast hidden" role="status"></div>
+
+<script>
+const KEY = "spendly-demo-expenses-v1";
+
+const today = new Date();
+const isoToday = [
+  today.getFullYear(),
+  String(today.getMonth() + 1).padStart(2, "0"),
+  String(today.getDate()).padStart(2, "0")
+].join("-");
+
+function offsetDate(days) {
+  const d = new Date();
+  d.setDate(d.getDate() + days);
+  return [
+    d.getFullYear(),
+    String(d.getMonth() + 1).padStart(2, "0"),
+    String(d.getDate()).padStart(2, "0")
+  ].join("-");
+}
+
+const seed = [
+  {id:"e1",amount:320,category:"Food",date:isoToday,merchant:"Lunch at Green Bowl",description:"Lunch with friends",receiptName:""},
+  {id:"e2",amount:180,category:"Transport",date:offsetDate(-1),merchant:"Metro recharge",description:"Commute",receiptName:""},
+  {id:"e3",amount:1299,category:"Shopping",date:offsetDate(-2),merchant:"Everyday essentials",description:"Household supplies",receiptName:""},
+  {id:"e4",amount:850,category:"Bills",date:offsetDate(-4),merchant:"Internet bill",description:"Monthly connection",receiptName:""},
+  {id:"e5",amount:240,category:"Food",date:offsetDate(-6),merchant:"Coffee & snacks",description:"Cafe",receiptName:""},
+  {id:"e6",amount:560,category:"Health",date:offsetDate(-9),merchant:"Pharmacy",description:"Personal care",receiptName:""}
+];
+
+function loadExpenses() {
+  try {
+    const saved = localStorage.getItem(KEY);
+    if (saved !== null) {
+      const parsed = JSON.parse(saved);
+      if (Array.isArray(parsed)) return parsed;
+    }
+  } catch (error) {
+    console.warn("Could not read saved expenses.", error);
+  }
+  return seed.map(item => ({...item}));
+}
+
+let expenses = loadExpenses();
+let editingId = null;
+let receiptData = "";
+let toastTimer = null;
+
+const money = amount =>
+  new Intl.NumberFormat("en-IN", {
+    style: "currency",
+    currency: "INR",
+    maximumFractionDigits: 2
+  }).format(Number(amount) || 0);
+
+const escapeHtml = value =>
+  String(value ?? "").replace(/[&<>"']/g, char => ({
+    "&": "&amp;",
+    "<": "&lt;",
+    ">": "&gt;",
+    '"': "&quot;",
+    "'": "&#39;"
+  })[char]);
+
+function prettyDate(value) {
+  if (!value) return "—";
+  return new Date(value + "T00:00:00").toLocaleDateString("en-IN", {
+    day: "2-digit",
+    month: "short",
+    year: "numeric"
+  });
+}
+
+function persist() {
+  try {
+    localStorage.setItem(KEY, JSON.stringify(expenses));
+    return true;
+  } catch (error) {
+    console.error("Could not save expenses.", error);
+    notify("Storage is full. Try removing a receipt or deleting some data.");
+    return false;
+  }
+}
+
+function notify(message) {
+  const toast = document.getElementById("toast");
+  toast.textContent = message;
+  toast.classList.remove("hidden");
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => toast.classList.add("hidden"), 2800);
+}
+
+function tableHTML(items) {
+  if (!items.length) {
+    return '<div class="empty">No expenses yet. Add your first expense to get started.</div>';
+  }
+
+  return `
+    <div class="table-wrap">
+      <table>
+        <thead>
+          <tr>
+            <th>Expense</th>
+            <th>Category</th>
+            <th>Date</th>
+            <th style="text-align:right">Amount</th>
+            <th>Receipt</th>
+            <th>Actions</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${items.map(item => `
+            <tr>
+              <td>
+                <div class="expense-name">${escapeHtml(item.merchant)}</div>
+                <div class="expense-desc">${escapeHtml(item.description || "No description")}</div>
+              </td>
+              <td><span class="pill">${escapeHtml(item.category)}</span></td>
+              <td>${prettyDate(item.date)}</td>
+              <td class="amount">${money(item.amount)}</td>
+              <td>${item.receiptName
+                ? '<span class="pill">▤ Attached</span>'
+                : '<span class="subtle">—</span>'}</td>
+              <td>
+                <div class="row-actions">
+                  <button class="icon-btn" data-edit="${escapeHtml(item.id)}">Edit</button>
+                  <button class="icon-btn" data-delete="${escapeHtml(item.id)}" aria-label="Delete expense">×</button>
+                </div>
+              </td>
+            </tr>
+          `).join("")}
+        </tbody>
+      </table>
+    </div>`;
+}
+
+function render() {
+  persist();
+
+  const now = new Date();
+  const currentMonth = `${now.getFullYear()}-${String(now.getMonth()+1).padStart(2,"0")}`;
+
+  const total = expenses.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+  const thisMonth = expenses.filter(item => item.date?.slice(0, 7) === currentMonth);
+  const monthTotal = thisMonth.reduce((sum, item) => sum + Number(item.amount || 0), 0);
+
+  const categoryTotals = {};
+  expenses.forEach(item => {
+    categoryTotals[item.category] =
+      (categoryTotals[item.category] || 0) + Number(item.amount || 0);
+  });
+
+  const categories = Object.entries(categoryTotals).sort((a, b) => b[1] - a[1]);
+
+  document.getElementById("totalValue").textContent = money(total);
+  document.getElementById("monthValue").textContent = money(monthTotal);
+  document.getElementById("countValue").textContent = expenses.length;
+  document.getElementById("topValue").textContent = categories[0]?.[0] || "—";
+  document.getElementById("topValue").style.fontSize =
+    (categories[0]?.[0].length > 8 ? "20px" : "26px");
+  document.getElementById("monthFoot").textContent =
+    `${thisMonth.length} transactions this month`;
+
+  // Build the six-month spending chart.
+  const months = [];
+  for (let i = 5; i >= 0; i--) {
+    const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+    months.push({
+      key: `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,"0")}`,
+      label: d.toLocaleDateString("en-IN", {month:"short"}),
+      value: 0,
+      current: i === 0
+    });
+  }
+
+  expenses.forEach(item => {
+    const month = months.find(m => m.key === item.date?.slice(0, 7));
+    if (month) month.value += Number(item.amount || 0);
+  });
+
+  const maxValue = Math.max(1, ...months.map(m => m.value));
+  document.getElementById("bars").innerHTML = months.map(month => `
+    <div class="bar-col">
+      <div class="subtle" style="font-size:10px">
+        ${month.value ? money(month.value) : ""}
+      </div>
+      <div class="bar ${month.current ? "current" : ""}"
+        style="height:${Math.max(4, month.value / maxValue * 70)}%"
+        title="${escapeHtml(month.label)}: ${money(month.value)}"></div>
+      <div class="bar-label">${month.label}</div>
+    </div>
+  `).join("");
+
+  // Build the category breakdown.
+  const icons = {
+    Food:"🍜", Transport:"🚇", Shopping:"🛍️", Bills:"🧾",
+    Health:"✚", Entertainment:"🎬", Education:"📚", Other:"✦"
+  };
+  const maxCategory = Math.max(1, ...categories.map(item => item[1]));
+
+  document.getElementById("categories").innerHTML = categories.length
+    ? categories.slice(0, 5).map(([name, amount]) => `
+      <div class="category-row">
+        <div class="cat-icon">${icons[name] || "✦"}</div>
+        <div>
+          <div class="cat-name">${escapeHtml(name)}</div>
+          <div class="cat-track">
+            <div class="cat-fill" style="width:${amount / maxCategory * 100}%"></div>
+          </div>
+        </div>
+        <div class="cat-amount">${money(amount)}</div>
+      </div>
+    `).join("")
+    : '<div class="empty">Category totals will appear here.</div>';
+
+  // Render the transaction and receipt pages.
+  const sorted = [...expenses].sort((a, b) => b.date.localeCompare(a.date));
+  document.getElementById("recentTable").innerHTML = tableHTML(sorted.slice(0, 5));
+  document.getElementById("allTable").innerHTML = tableHTML(sorted);
+
+  const withReceipts = sorted.filter(item => item.receiptName);
+  document.getElementById("receiptList").innerHTML = withReceipts.length
+    ? `<div class="settings-list">
+        ${withReceipts.map(item => `
+          <div class="settings-row">
+            <div>
+              <strong>▤ ${escapeHtml(item.receiptName)}</strong>
+              <small>${escapeHtml(item.merchant)} · ${prettyDate(item.date)} · ${money(item.amount)}</small>
+            </div>
+            <span class="pill">Local demo</span>
+          </div>
+        `).join("")}
+      </div>`
+    : '<div class="empty">No receipts attached yet. Add an expense and choose a receipt file.</div>';
+}
+
+function setPage(page) {
+  document.querySelectorAll(".nav button").forEach(button => {
+    button.classList.toggle("active", button.dataset.page === page);
+  });
+
+  ["dashboard", "transactions", "receipts", "settings"].forEach(name => {
+    document.getElementById(name + "Page").classList.toggle("hidden", name !== page);
+  });
+
+  const titles = {
+    dashboard: ["Your money, in focus", "Good morning 👋"],
+    transactions: ["Every detail, together", "Transactions"],
+    receipts: ["Keep proof close", "Receipts"],
+    settings: ["Under the hood", "Settings"]
+  };
+
+  document.getElementById("eyebrow").textContent = titles[page][0];
+  document.getElementById("pageTitle").textContent = titles[page][1];
+  document.getElementById("addBtn").classList.toggle(
+    "hidden", page === "receipts" || page === "settings"
+  );
+
+  if (page === "transactions") render();
+}
+
+function openModal(id = null) {
+  editingId = id;
+  receiptData = "";
+
+  const existing = expenses.find(item => item.id === id);
+  const form = document.getElementById("expenseForm");
+  form.reset();
+
+  document.getElementById("date").value = existing?.date || isoToday;
+  document.getElementById("modalTitle").textContent =
+    id ? "Edit expense" : "Add expense";
+
+  if (existing) {
+    document.getElementById("amount").value = existing.amount;
+    document.getElementById("category").value = existing.category;
+    document.getElementById("merchant").value = existing.merchant;
+    document.getElementById("description").value = existing.description || "";
+  }
+
+  document.getElementById("modalBackdrop").classList.remove("hidden");
+  document.getElementById("amount").focus();
+}
+
+function closeModal() {
+  document.getElementById("modalBackdrop").classList.add("hidden");
+  receiptData = "";
+}
+
+// Header date and navigation.
+document.getElementById("todayChip").textContent =
+  today.toLocaleDateString("en-IN", {
+    weekday:"short", day:"numeric", month:"short", year:"numeric"
+  });
+
+document.getElementById("date").value = isoToday;
+
+document.querySelectorAll(".nav button").forEach(button => {
+  button.addEventListener("click", () => setPage(button.dataset.page));
+});
+
+document.getElementById("addBtn").addEventListener("click", () => openModal());
+document.getElementById("addBtn2").addEventListener("click", () => openModal());
+document.getElementById("viewAllBtn").addEventListener("click", () => setPage("transactions"));
+document.getElementById("closeModal").addEventListener("click", closeModal);
+document.getElementById("cancelBtn").addEventListener("click", closeModal);
+
+document.getElementById("modalBackdrop").addEventListener("click", event => {
+  if (event.target.id === "modalBackdrop") closeModal();
+});
+
+document.addEventListener("keydown", event => {
+  if (event.key === "Escape") closeModal();
+});
+
+// Read a receipt into browser storage. Limit file size for this demo.
+document.getElementById("receipt").addEventListener("change", event => {
+  const file = event.target.files[0];
+  receiptData = "";
+
+  if (!file) return;
+
+  if (file.size > 600000) {
+    notify("Choose a file under 600 KB for this browser demo.");
+    event.target.value = "";
+    return;
+  }
+
+  const reader = new FileReader();
+  reader.onload = () => { receiptData = reader.result; };
+  reader.onerror = () => notify("Could not read this receipt file.");
+  reader.readAsDataURL(file);
+});
+
+// Add a new expense or update an existing one.
+document.getElementById("expenseForm").addEventListener("submit", async event => {
+  event.preventDefault();
+
+  const amount = Number(document.getElementById("amount").value);
+  const merchant = document.getElementById("merchant").value.trim();
+  const date = document.getElementById("date").value;
+  const file = document.getElementById("receipt").files[0];
+
+  if (!Number.isFinite(amount) || amount <= 0) {
+    notify("Enter an amount greater than zero.");
+    return;
+  }
+
+  if (!merchant || !date) {
+    notify("Please complete all required fields.");
+    return;
+  }
+
+  // Wait until a selected receipt has finished loading.
+  if (file && !receiptData) {
+    notify("Please wait for the receipt to finish loading, then save again.");
+    return;
+  }
+
+  const old = expenses.find(item => item.id === editingId);
+
+  const item = {
+    id: editingId || "e" + Date.now(),
+    amount,
+    category: document.getElementById("category").value,
+    date,
+    merchant,
+    description: document.getElementById("description").value.trim(),
+    receiptName: file ? file.name : (old?.receiptName || ""),
+    receiptData: file ? receiptData : (old?.receiptData || "")
+  };
+
+  if (editingId) {
+    expenses = expenses.map(entry => entry.id === editingId ? item : entry);
+  } else {
+    expenses.push(item);
+  }
+
+  closeModal();
+  render();
+  notify(editingId ? "Expense updated." : "Expense saved.");
+});
+
+// Handle Edit and Delete buttons in both transaction tables.
+document.addEventListener("click", event => {
+  const editButton = event.target.closest("[data-edit]");
+  const deleteButton = event.target.closest("[data-delete]");
+
+  if (editButton) {
+    openModal(editButton.dataset.edit);
+  }
+
+  if (deleteButton) {
+    const item = expenses.find(entry => entry.id === deleteButton.dataset.delete);
+
+    if (item && confirm(`Delete "${item.merchant}"? This cannot be undone.`)) {
+      expenses = expenses.filter(entry => entry.id !== item.id);
+      render();
+      notify("Expense deleted.");
+    }
+  }
+});
+
+// Reset the demo back to its original sample transactions.
+document.getElementById("resetBtn").addEventListener("click", () => {
+  if (confirm("Reset all locally saved expenses to the original sample data?")) {
+    expenses = seed.map(item => ({...item}));
+    render();
+    notify("Demo data reset.");
+  }
+});
+
+// Initial page render.
+render();
+</script>
+</body>
+</html>

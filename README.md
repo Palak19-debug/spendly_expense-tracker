@@ -1,1 +1,1 @@
-# ccl_miniproject_spendly
+# Spendly - An Expense Tracker

@@ -2,6 +2,7 @@
 import json
 import os
 import boto3
+from botocore.exceptions import ClientError
 
 
 dynamodb = boto3.resource("dynamodb", region_name="us-east-1")
@@ -20,14 +21,25 @@ def create_expense(data):
         }
 
     required_fields = ["amount", "category", "date"]
-
+    
     for field in required_fields:
         if field not in data or data[field] in (None, ""):
             return {
                 "statusCode": 400,
                 "body": json.dumps({"error": f"Missing required field: {field}"})
             }
-
+    try:
+        datetime.strptime(data["date"], "%Y-%m-%d")
+    except (ValueError, TypeError):
+        return {
+            "statusCode": 400,
+            "headers": {
+                "Content-Type": "application/json"
+            },
+            "body": json.dumps({
+                "error": "Date must be in YYYY-MM-DD format"
+            })
+        }
     try:
         amount = float(data["amount"])
         if amount <= 0:
@@ -113,18 +125,33 @@ def update_expense(expense_id, data):
         f"#{key} = :{key}" for key in updates
     )
 
-    response = table.update_item(
-        Key={"expenseId": expense_id},
-        UpdateExpression=update_expression,
-        ExpressionAttributeNames={
-            f"#{key}": key for key in updates
-        },
-        ExpressionAttributeValues={
-            f":{key}": value for key, value in updates.items()
-        },
-        ConditionExpression="attribute_exists(expenseId)",
-        ReturnValues="ALL_NEW"
-    )
+    
+    try:
+        response = table.update_item(
+            Key={"expenseId": expense_id},
+            UpdateExpression=update_expression,
+            ExpressionAttributeNames={
+                f"#{key}": key for key in updates
+            },
+            ExpressionAttributeValues={
+                f":{key}": value for key, value in updates.items()
+            },
+            ConditionExpression="attribute_exists(expenseId)",
+            ReturnValues="ALL_NEW"
+        )
+    except ClientError as error:
+        error_code = error.response["Error"]["Code"]
+
+        if error_code == "ConditionalCheckFailedException":
+            return {
+                "statusCode": 404,
+                "headers": {"Content-Type": "application/json"},
+                "body": json.dumps({
+                    "error": "Expense not found"
+                })
+            }
+
+        raise
 
     return {
         "statusCode": 200,
@@ -134,17 +161,49 @@ def update_expense(expense_id, data):
         "body": json.dumps(response["Attributes"])
     }
 
+
+    try:
+        response = table.delete_item(
+            Key={"expenseId": expense_id},
+            ConditionExpression="attribute_exists(expenseId)"
+        )
+    except ClientError as error:
+        error_code = error.response["Error"]["Code"]
+
+        if error_code == "ConditionalCheckFailedException":
+            return {
+                "statusCode": 404,
+                "headers": {"Content-Type": "application/json"},
+                "body": json.dumps({
+                    "error": "Expense not found"
+                })
+            }
+
+        raise
+    
 def delete_expense(expense_id):
-    response = table.delete_item(
-        Key={"expenseId": expense_id},
-        ConditionExpression="attribute_exists(expenseId)"
-    )
+    try:
+        table.delete_item(
+            Key={"expenseId": expense_id},
+            ConditionExpression="attribute_exists(expenseId)"
+        )
+    except ClientError as error:
+        error_code = error.response["Error"]["Code"]
+
+        if error_code == "ConditionalCheckFailedException":
+            return {
+                "statusCode": 404,
+                "headers": {"Content-Type": "application/json"},
+                "body": json.dumps({
+                    "error": "Expense not found"
+                })
+            }
+
+        raise
 
     return {
         "statusCode": 200,
-        "headers": {
-            "Content-Type": "application/json"
-        },
+        "headers": {"Content-Type": "application/json"},
         "body": json.dumps({
             "message": "Expense deleted successfully",
             "expenseId": expense_id

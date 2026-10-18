@@ -96,7 +96,18 @@ tr:last-child td{border-bottom:0}
 </head>
 
 <body>
-<div class="app">
+  
+<div id="authScreen" style="display:none; text-align:center; padding:40px;">
+  <h1>Welcome to Spendly</h1>
+  <p>Sign in or create an account to manage your expenses.</p>
+  <button type="button" onclick="loginWithCognito()">Login / Sign Up</button>
+</div>
+
+<div class="app" style="display:none;">  
+<div style="display:flex; justify-content:flex-end; padding:12px 20px;">
+  <button type="button" onclick="logoutFromCognito()">Logout</button>
+</div>
+
 <div class="layout">
 <aside class="sidebar">
 <div class="brand"><div class="logo">S</div><span>spendly</span></div>
@@ -253,7 +264,16 @@ tr:last-child td{border-bottom:0}
 
 <script>
 const KEY = "spendly-demo-expenses-v1";
+const API_URL = "https://hhbq9o43q1.execute-api.us-east-1.amazonaws.com/prod";
+const COGNITO_DOMAIN =
+  "https://us-east-1oxfauuefm.auth.us-east-1.amazoncognito.com";
 
+const COGNITO_CLIENT_ID = "7s17n9bc5uthn77e3uk150c58g";
+const COGNITO_REDIRECT_URI = "http://127.0.0.1:8000/index.html";
+const COGNITO_LOGOUT_URI = "http://127.0.0.1:8000/index.html";
+
+const COGNITO_ISSUER =
+  "https://cognito-idp.us-east-1.amazonaws.com/us-east-1_OxFAUUeFM";
 const today = new Date();
 const isoToday = [
   today.getFullYear(),
@@ -292,8 +312,39 @@ function loadExpenses() {
   }
   return seed.map(item => ({...item}));
 }
+async function fetchExpensesFromAPI() {
+  try {
+    const response = await fetch(`${API_URL}/expenses`, {
+  headers: {
+    "Authorization": `Bearer ${cognitoAccessToken}`
+  }
+});
 
-let expenses = loadExpenses();
+    if (!response.ok) {
+      throw new Error(`API error: ${response.status}`);
+    }
+
+    const data = await response.json();
+
+    return data.map(item => ({
+      id: item.expenseId,
+      amount: Number(item.amount),
+      category: item.category,
+      date: item.date,
+      merchant: item.merchant || item.description || item.category,
+      description: item.description || "",
+      receiptName: "",
+      receiptData: ""
+    }));
+  } catch (error) {
+    console.error("Could not load expenses from AWS:", error);
+    notify("Could not connect to AWS. Check the API and try again.");
+    return null;
+  }
+}
+
+let expenses = [];
+let dataSource = "aws";
 let editingId = null;
 let receiptData = "";
 let toastTimer = null;
@@ -621,7 +672,61 @@ document.getElementById("expenseForm").addEventListener("submit", async event =>
     receiptName: file ? file.name : (old?.receiptName || ""),
     receiptData: file ? receiptData : (old?.receiptData || "")
   };
+  try {
+    const payload = {
+      amount,
+      category: document.getElementById("category").value,
+      date,
+      merchant,
+      description: document.getElementById("description").value.trim()
+    };
 
+    const response = await fetch(
+      editingId
+        ? `${API_URL}/expenses/${editingId}`
+        : `${API_URL}/expenses`,
+      {
+        method: editingId ? "PUT" : "POST",
+        headers: {
+  "Content-Type": "application/json",
+  "Authorization": `Bearer ${cognitoAccessToken}`
+},
+        body: JSON.stringify(payload)
+      }
+    );
+
+    if (!response.ok) {
+      const errorData = await response.json();
+      throw new Error(errorData.error || `HTTP ${response.status}`);
+    }
+
+    const saved = await response.json();
+
+    const item = {
+      id: saved.expenseId,
+      amount: Number(saved.amount),
+      category: saved.category,
+      date: saved.date,
+      merchant: saved.merchant || merchant,
+      description: saved.description || "",
+      receiptName: "",
+      receiptData: ""
+    };
+
+    if (editingId) {
+      expenses = expenses.map(entry => entry.id === editingId ? item : entry);
+    } else {
+      expenses.push(item);
+    }
+
+    closeModal();
+    render();
+    notify(editingId ? "Expense updated in AWS." : "Expense saved to AWS.");
+  } catch (error) {
+    console.error("Save failed:", error);
+    notify(`AWS save failed: ${error.message}`);
+  }
+  return;
   if (editingId) {
     expenses = expenses.map(entry => entry.id === editingId ? item : entry);
   } else {
@@ -634,7 +739,7 @@ document.getElementById("expenseForm").addEventListener("submit", async event =>
 });
 
 // Handle Edit and Delete buttons in both transaction tables.
-document.addEventListener("click", event => {
+ document.addEventListener("click", async event => {
   const editButton = event.target.closest("[data-edit]");
   const deleteButton = event.target.closest("[data-delete]");
 
@@ -645,11 +750,33 @@ document.addEventListener("click", event => {
   if (deleteButton) {
     const item = expenses.find(entry => entry.id === deleteButton.dataset.delete);
 
-    if (item && confirm(`Delete "${item.merchant}"? This cannot be undone.`)) {
-      expenses = expenses.filter(entry => entry.id !== item.id);
-      render();
-      notify("Expense deleted.");
+    if (item && confirm("Delete this expense?")) {
+  try {
+    
+const response = await fetch(
+  `${API_URL}/expenses/${encodeURIComponent(item.id)}`,
+  {
+    method: "DELETE",
+    headers: {
+      "Authorization": `Bearer ${cognitoAccessToken}`
     }
+  }
+);
+
+
+    if (!response.ok) {
+      const data = await response.json();
+      throw new Error(data.error || `HTTP ${response.status}`);
+    }
+
+    expenses = expenses.filter(entry => entry.id !== item.id);
+    render();
+    notify("Expense deleted from AWS.");
+  } catch (error) {
+    console.error("Delete failed:", error);
+    notify(`AWS delete failed: ${error.message}`);
+  }
+}
   }
 });
 
@@ -662,8 +789,169 @@ document.getElementById("resetBtn").addEventListener("click", () => {
   }
 });
 
-// Initial page render.
-render();
+// Initial page load from AWS.
+async function initializeApp() {
+  const cloudExpenses = await fetchExpensesFromAPI();
+
+  if (cloudExpenses !== null) {
+    expenses = cloudExpenses;
+    render();
+  }
+}
+
+handleCognitoCallback();
+
+
+function generateRandomString(length = 64) {
+  const chars =
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789-._~";
+  const random = crypto.getRandomValues(new Uint8Array(length));
+
+  return Array.from(random, byte => chars[byte % chars.length]).join("");
+}
+
+async function loginWithCognito() {
+  const verifier = generateRandomString(64);
+
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(verifier)
+  );
+
+  const challenge = btoa(
+    String.fromCharCode(...new Uint8Array(digest))
+  )
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_")
+    .replace(/=+$/, "");
+
+  sessionStorage.setItem("pkce_verifier", verifier);
+
+  const params = new URLSearchParams({
+    client_id: COGNITO_CLIENT_ID,
+    response_type: "code",
+    scope: "openid email profile",
+    redirect_uri: COGNITO_REDIRECT_URI,
+    code_challenge_method: "S256",
+    code_challenge: challenge
+  });
+
+  window.location.href =
+    `${COGNITO_DOMAIN}/oauth2/authorize?${params.toString()}`;
+}
+
+
+
+function logoutFromCognito() {
+  cognitoAccessToken = "";
+  cognitoIdToken = "";
+  sessionStorage.removeItem("pkce_verifier");
+
+  const app = document.querySelector(".app");
+  const authScreen = document.getElementById("authScreen");
+
+  if (app) app.style.display = "none";
+  if (authScreen) authScreen.style.display = "block";
+
+  const params = new URLSearchParams({
+    client_id: COGNITO_CLIENT_ID,
+    logout_uri: COGNITO_LOGOUT_URI
+  });
+
+  window.location.href =
+    `${COGNITO_DOMAIN}/logout?${params.toString()}`;
+}
+
+
+let cognitoAccessToken = "";
+let cognitoIdToken = "";
+
+
+async function handleCognitoCallback() {
+  const params = new URLSearchParams(window.location.search);
+  const code = params.get("code");
+  const error = params.get("error");
+
+  const app = document.querySelector(".app");
+  const authScreen = document.getElementById("authScreen");
+
+  if (error) {
+  alert(
+    "Cognito error: " + error +
+    "\nDetails: " + (params.get("error_description") || "No details")
+  );
+
+  if (authScreen) authScreen.style.display = "block";
+  if (app) app.style.display = "none";
+  return;
+}
+
+  if (!code) {
+    if (authScreen) authScreen.style.display = "block";
+    if (app) app.style.display = "none";
+    return;
+  }
+
+  const verifier = sessionStorage.getItem("pkce_verifier");
+
+  if (!verifier) {
+    alert("Login session expired. Please log in again.");
+    if (authScreen) authScreen.style.display = "block";
+    if (app) app.style.display = "none";
+    return;
+  }
+
+  try {
+    const response = await fetch(`${COGNITO_DOMAIN}/oauth2/token`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/x-www-form-urlencoded"
+      },
+      body: new URLSearchParams({
+        grant_type: "authorization_code",
+        client_id: COGNITO_CLIENT_ID,
+        code,
+        redirect_uri: COGNITO_REDIRECT_URI,
+        code_verifier: verifier
+      })
+    });
+
+    const data = await response.json();
+
+    if (!response.ok) {
+      console.error("Cognito token error:", data);
+      alert(JSON.stringify(data));
+      alert("Login failed. Please try again.");
+      if (authScreen) authScreen.style.display = "block";
+      if (app) app.style.display = "none";
+      return;
+    }
+
+    cognitoAccessToken = data.access_token;
+    cognitoIdToken = data.id_token;
+    sessionStorage.setItem("cognitoAccessToken", data.access_token);
+sessionStorage.setItem("cognitoIdToken", data.id_token);
+
+    sessionStorage.removeItem("pkce_verifier");
+
+    window.history.replaceState(
+      {},
+      document.title,
+      COGNITO_REDIRECT_URI
+    );
+
+    if (authScreen) authScreen.style.display = "none";
+    if (app) app.style.display = "block";
+
+    await initializeApp();
+  } catch (error) {
+    console.error(error);
+    alert("Unable to complete login.");
+    if (authScreen) authScreen.style.display = "block";
+    if (app) app.style.display = "none";
+  }
+}
+
 </script>
 </body>
 </html>

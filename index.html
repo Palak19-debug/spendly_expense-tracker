@@ -96,12 +96,6 @@ tr:last-child td{border-bottom:0}
 </head>
 
 <body>
-  
-<div id="authScreen" style="display:none; text-align:center; padding:40px;">
-  <h1>Welcome to Spendly</h1>
-  <p>Sign in or create an account to manage your expenses.</p>
-  <button type="button" onclick="loginWithCognito()">Login / Sign Up</button>
-</div>
 
 <div class="app" style="display:none;">  
 <div style="display:flex; justify-content:flex-end; padding:12px 20px;">
@@ -333,8 +327,7 @@ async function fetchExpensesFromAPI() {
       date: item.date,
       merchant: item.merchant || item.description || item.category,
       description: item.description || "",
-      receiptName: "",
-      receiptData: ""
+      receiptKey: item.receiptKey || ""
     }));
   } catch (error) {
     console.error("Could not load expenses from AWS:", error);
@@ -420,10 +413,11 @@ function tableHTML(items) {
               </td>
               <td><span class="pill">${escapeHtml(item.category)}</span></td>
               <td>${prettyDate(item.date)}</td>
-              <td class="amount">${money(item.amount)}</td>
-              <td>${item.receiptName
-                ? '<span class="pill">▤ Attached</span>'
-                : '<span class="subtle">—</span>'}</td>
+              <td class="amount">${money(item.amount)}</td>             
+              <td>${item.receiptKey
+                ? `<a href="#" class="pill" onclick="openReceipt('${escapeHtml(item.receiptKey)}'); return false;">▤ Attached</a>`
+                : '<span class="subtle">—</span>'}
+              </td>
               <td>
                 <div class="row-actions">
                   <button class="icon-btn" data-edit="${escapeHtml(item.id)}">Edit</button>
@@ -521,13 +515,17 @@ function render() {
   document.getElementById("recentTable").innerHTML = tableHTML(sorted.slice(0, 5));
   document.getElementById("allTable").innerHTML = tableHTML(sorted);
 
-  const withReceipts = sorted.filter(item => item.receiptName);
+  const withReceipts = sorted.filter(item => item.receiptKey);
   document.getElementById("receiptList").innerHTML = withReceipts.length
     ? `<div class="settings-list">
         ${withReceipts.map(item => `
           <div class="settings-row">
             <div>
-              <strong>▤ ${escapeHtml(item.receiptName)}</strong>
+              <strong>
+              <a href="#" onclick="openReceipt('${escapeHtml(item.receiptKey)}'); return false;">
+              ▤ ${escapeHtml(item.receiptKey.split("/").pop())}
+              </a>
+              </strong>
               <small>${escapeHtml(item.merchant)} · ${prettyDate(item.date)} · ${money(item.amount)}</small>
             </div>
             <span class="pill">Local demo</span>
@@ -536,7 +534,29 @@ function render() {
       </div>`
     : '<div class="empty">No receipts attached yet. Add an expense and choose a receipt file.</div>';
 }
+async function openReceipt(receiptKey) {
+  try {
+    const response = await fetch(
+      `${API_URL}/receipts/download-url?receiptKey=${encodeURIComponent(receiptKey)}`,
+      {
+        method: "GET",
+        headers: {
+          "Authorization": `Bearer ${cognitoAccessToken}`
+        }
+      }
+    );
 
+    if (!response.ok) {
+      throw new Error(`Could not get receipt URL: HTTP ${response.status}`);
+    }
+
+    const data = await response.json();
+    window.open(data.downloadUrl, "_blank", "noopener");
+  } catch (error) {
+    console.error("Could not open receipt:", error);
+    notify("Could not open receipt. Please log in again and retry.");
+  }
+}
 function setPage(page) {
   document.querySelectorAll(".nav button").forEach(button => {
     button.classList.toggle("active", button.dataset.page === page);
@@ -617,22 +637,31 @@ document.addEventListener("keydown", event => {
 });
 
 // Read a receipt into browser storage. Limit file size for this demo.
+
+let receiptName = "";
+
 document.getElementById("receipt").addEventListener("change", event => {
   const file = event.target.files[0];
   receiptData = "";
+  receiptName = "";
 
   if (!file) return;
 
-  if (file.size > 600000) {
-    notify("Choose a file under 600 KB for this browser demo.");
+  const allowedTypes = ["image/jpeg", "image/png", "application/pdf"];
+
+  if (!allowedTypes.includes(file.type)) {
+    notify("Choose a JPG, PNG, or PDF receipt.");
     event.target.value = "";
     return;
   }
 
-  const reader = new FileReader();
-  reader.onload = () => { receiptData = reader.result; };
-  reader.onerror = () => notify("Could not read this receipt file.");
-  reader.readAsDataURL(file);
+  if (file.size > 5 * 1024 * 1024) {
+    notify("Choose a receipt smaller than 5 MB.");
+    event.target.value = "";
+    return;
+  }
+
+  receiptName = file.name;
 });
 
 // Add a new expense or update an existing one.
@@ -655,10 +684,6 @@ document.getElementById("expenseForm").addEventListener("submit", async event =>
   }
 
   // Wait until a selected receipt has finished loading.
-  if (file && !receiptData) {
-    notify("Please wait for the receipt to finish loading, then save again.");
-    return;
-  }
 
   const old = expenses.find(item => item.id === editingId);
 
@@ -680,6 +705,45 @@ document.getElementById("expenseForm").addEventListener("submit", async event =>
       merchant,
       description: document.getElementById("description").value.trim()
     };
+    if (file) {
+  const uploadUrlResponse = await fetch(
+    `${API_URL}/receipts/upload-url`,
+    {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "Authorization": `Bearer ${cognitoAccessToken}`
+      },
+      body: JSON.stringify({
+        fileName: file.name,
+        contentType: file.type
+      })
+    }
+  );
+
+  if (!uploadUrlResponse.ok) {
+    const errorData = await uploadUrlResponse.json();
+    throw new Error(
+      errorData.error || "Could not prepare receipt upload"
+    );
+  }
+
+  const uploadData = await uploadUrlResponse.json();
+
+  const s3Response = await fetch(uploadData.uploadUrl, {
+    method: "PUT",
+    headers: {
+      "Content-Type": file.type
+    },
+    body: file
+  });
+
+  if (!s3Response.ok) {
+    throw new Error(`S3 upload failed: HTTP ${s3Response.status}`);
+  }
+
+  payload.receiptKey = uploadData.receiptKey;
+}
 
     const response = await fetch(
       editingId
@@ -709,8 +773,7 @@ document.getElementById("expenseForm").addEventListener("submit", async event =>
       date: saved.date,
       merchant: saved.merchant || merchant,
       description: saved.description || "",
-      receiptName: "",
-      receiptData: ""
+      receiptKey: saved.receiptKey || ""
     };
 
     if (editingId) {
@@ -887,10 +950,10 @@ async function handleCognitoCallback() {
 }
 
   if (!code) {
-    if (authScreen) authScreen.style.display = "block";
-    if (app) app.style.display = "none";
-    return;
-  }
+  if (app) app.style.display = "none";
+  loginWithCognito();
+  return;
+}
 
   const verifier = sessionStorage.getItem("pkce_verifier");
 
